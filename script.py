@@ -314,14 +314,16 @@ def download_with_progress(selected, dest_path, stdscr, h, w):
     total = None
     err_msg = None
     try:
-        req = urllib.request.urlopen(url)
-        total_raw = req.getheader('Content-Length')
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        req = urllib.request.Request(url, headers=headers)
+        resp = urllib.request.urlopen(req)
+        total_raw = resp.getheader('Content-Length')
         total = int(total_raw) if total_raw and total_raw.isdigit() else None
         downloaded = 0
         chunk = 8192
         with open(dest_path, 'wb') as out:
             while True:
-                data = req.read(chunk)
+                data = resp.read(chunk)
                 if not data:
                     break
                 out.write(data)
