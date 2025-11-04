@@ -1,15 +1,58 @@
-# rom_scraper.py
-# === TERMINAL ROM BROWSER v0.1 ===
-# Coded with chaos, caffeine, and sheer gamer energy 💀💜
-
-import curses
 import json
 import os
 import urllib.request
 import urllib.parse
 import re
+import sys
+import importlib
+import subprocess
+
+# helper: ensure a python package is importable, install via pip if missing
+def ensure_package(module_name, pip_name=None):
+    """
+    Try to import module_name; if ImportError, run `python -m pip install pip_name`
+    (or module_name if pip_name is None) and re-import. Returns the module on
+    success or None on failure.
+    """
+    try:
+        return importlib.import_module(module_name)
+    except ImportError:
+        to_install = pip_name or module_name
+        print(f"'{module_name}' not found — attempting to install '{to_install}'...")
+        try:
+            rc = subprocess.call([sys.executable, "-m", "pip", "install", to_install])
+        except Exception as e:
+            print(f"Failed to run pip installer: {e}")
+            return None
+        if rc != 0:
+            print(f"pip install exited with code {rc}")
+            return None
+        try:
+            return importlib.import_module(module_name)
+        except Exception as e:
+            print(f"Installed but failed to import '{module_name}': {e}")
+            return None
+
+# ensure BeautifulSoup (bs4) is available
+_bs4 = ensure_package("bs4", "beautifulsoup4")
+if not _bs4:
+    print("Required package 'beautifulsoup4' could not be installed. Please install it and rerun.")
+    sys.exit(1)
+
+# Detect if running on Windows
+IS_WINDOWS = (os.name == "nt") or sys.platform.startswith("win")
+
+if IS_WINDOWS:
+    _win_curses = ensure_package("curses", "windows-curses")
+    if not _win_curses:
+        print("Required package 'windows-curses' could not be installed. Please install it and rerun.")
+        sys.exit(1)
+
+import curses
 from bs4 import BeautifulSoup
 import time
+import subprocess
+import shutil
 
 CACHE_FILE = "rom_cache.json"
 CONFIG_FILE = "config.json"
@@ -305,6 +348,109 @@ def init_ui_colors(stdscr):
         ERR_ATTR = curses.A_BOLD
 
 
+# Horizontal scrolling/marquee support
+
+# state for horizontal marquee/scrolling of long strings
+SCROLL_STATES = {}
+
+DEFAULT_TIMEOUT_MS = 120  # main loop will refresh ~8-9 times/sec
+
+
+def addstr_scroll(stdscr, y, x, text, attr=None, key=None, speed=6, gap=4, max_width=None):
+    """Like stdscr.addstr but will clamp to terminal width and, when the text
+    is longer than available space, show a horizontal scrolling/marquee for
+    the given key (or position if key is None).
+
+    - stdscr: the curses window
+    - y, x: position to draw
+    - text: the string to draw
+    - attr: optional curses attribute
+    - key: unique hashable used to keep per-item scroll state (defaults to (y,x))
+    - speed: characters per second to advance when scrolling
+    - gap: number of spaces to insert between wrap-around
+    - max_width: optional integer to override / cap the available width used
+                 for this field even if the terminal is wider.
+    """
+    try:
+        h, w = stdscr.getmaxyx()
+        avail = max(0, w - x)
+        # if caller provided a max_width, respect it (cap to terminal as well)
+        if isinstance(max_width, int) and max_width > 0:
+            avail = min(avail, max_width)
+
+        if avail <= 0:
+            return
+
+        display = text
+        if len(text) <= avail:
+            # short enough to fit; clear any previous state
+            state_key = key if key is not None else (y, x)
+            if state_key in SCROLL_STATES:
+                SCROLL_STATES.pop(state_key, None)
+            if attr is not None:
+                try:
+                    stdscr.addstr(y, x, display[:avail], attr)
+                except Exception:
+                    stdscr.addstr(y, x, display[:avail])
+            else:
+                try:
+                    stdscr.addstr(y, x, display[:avail])
+                except Exception:
+                    pass
+            return
+
+        # needs scrolling
+        state_key = key if key is not None else (y, x)
+        now = time.time()
+        buf = text + (" " * gap)
+        L = len(buf)
+
+        st = SCROLL_STATES.get(state_key)
+        if not st:
+            st = {"pos": 0, "last": now}
+            SCROLL_STATES[state_key] = st
+
+        # compute how many characters to advance based on elapsed time
+        elapsed = now - st["last"]
+        advance = int(elapsed * speed)
+        if advance > 0:
+            st["pos"] = (st["pos"] + advance) % L
+            st["last"] = now
+
+        doubled = buf + buf
+        start_pos = st["pos"] % L
+        display = doubled[start_pos:start_pos + avail]
+
+        # finally draw
+        if attr is not None:
+            try:
+                stdscr.addstr(y, x, display, attr)
+            except Exception:
+                try:
+                    stdscr.addstr(y, x, display)
+                except Exception:
+                    pass
+        else:
+            try:
+                stdscr.addstr(y, x, display)
+            except Exception:
+                pass
+    except Exception:
+        # best-effort fallback
+        try:
+            term_w = stdscr.getmaxyx()[1]
+            use_w = term_w - x
+            if isinstance(max_width, int) and max_width > 0:
+                use_w = min(use_w, max_width)
+            if attr is not None:
+                stdscr.addstr(y, x, text[:max(0, use_w)], attr)
+            else:
+                stdscr.addstr(y, x, text[:max(0, use_w)])
+        except Exception:
+            pass
+
+
+
 def download_with_progress(selected, dest_path, stdscr, h, w):
     url = selected.get('url')
     name = selected.get('name', '')
@@ -389,12 +535,155 @@ def download_with_progress(selected, dest_path, stdscr, h, w):
         pass
 
 
+# wget-based downloader (uses system wget to handle throttling/resuming)
+def download_with_wget(selected, dest_path, stdscr, h, w):
+    url = selected.get('url')
+    name = selected.get('name', '')
+    start = time.time()
+    wget_path = shutil.which('wget')
+    if not wget_path:
+        # fallback message
+        try:
+            stdscr.clear()
+            stdscr.addstr(0, 2, "wget not found on system; falling back to builtin downloader.")
+            stdscr.addstr(2, 2, "Press any key to continue...")
+            stdscr.refresh()
+            stdscr.getch()
+        except Exception:
+            pass
+        return download_with_progress(selected, dest_path, stdscr, h, w)
+
+    # spawn wget with resume and output to file
+    cmd = [wget_path, '-c', '-O', dest_path, url]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    except Exception as e:
+        try:
+            stdscr.clear()
+            stdscr.addstr(0, 2, f"Failed to start wget: {e}")
+            stdscr.addstr(2, 2, "Press any key to continue...")
+            stdscr.refresh()
+            stdscr.getch()
+        except Exception:
+            pass
+        return
+
+    # while wget runs, show combined progress: tail wget output and stat file size
+    total = None
+    try:
+        # try to get total from headers first
+        try:
+            req = urllib.request.urlopen(url)
+            total_raw = req.getheader('Content-Length')
+            total = int(total_raw) if total_raw and total_raw.isdigit() else None
+        except Exception:
+            total = None
+
+        while True:
+            # read any available output line
+            line = proc.stdout.readline()
+            if line:
+                # display last line of wget output
+                stdscr.clear()
+                stdscr.addstr(0, 2, f"{ICON_DL} Downloading with wget: {name}", HEADER_ATTR if HEADER_ATTR is not None else curses.A_BOLD)
+                stdscr.addstr(1, 2, f"To: {dest_path}")
+                try:
+                    stdscr.addstr(3, 2, line.strip()[:w-4])
+                except Exception:
+                    pass
+            # update file size based progress
+            try:
+                if os.path.exists(dest_path):
+                    downloaded = os.path.getsize(dest_path)
+                else:
+                    downloaded = 0
+                elapsed = time.time() - start
+                speed = downloaded / elapsed if elapsed > 0 else 0
+                percent = (downloaded / total * 100) if total else 0
+                eta = int((total - downloaded) / speed) if total and speed > 0 else 0
+                stdscr.addstr(2, 2, f"Size: {sizeof_fmt(total)}")
+                stdscr.addstr(4, 2, f"Downloaded: {sizeof_fmt(downloaded)} ({percent:.1f}%)")
+                stdscr.addstr(5, 2, f"Speed: {sizeof_fmt(speed)}/s  Elapsed: {int(elapsed)}s  ETA: {eta}s")
+
+                bar_w = max(10, w - 12)
+                if total:
+                    filled = int(bar_w * downloaded / total)
+                else:
+                    filled = int((time.time() * 3) % bar_w)
+                bar = '[' + '#' * filled + '-' * (bar_w - filled) + ']'
+                stdscr.addstr(7, 2, bar[:w-4], SIZE_ATTR if SIZE_ATTR is not None else curses.A_NORMAL)
+                stdscr.refresh()
+            except Exception:
+                pass
+
+            if proc.poll() is not None:
+                break
+
+        rc = proc.wait()
+        success = (rc == 0)
+    except Exception:
+        success = False
+
+    # final summary similar to builtin
+    try:
+        elapsed = time.time() - start
+        stdscr.clear()
+        if success:
+            stdscr.addstr(0, 2, f"{ICON_OK} Download (wget) complete", HEADER_ATTR if HEADER_ATTR is not None else curses.A_BOLD)
+            stdscr.addstr(2, 2, f"Name: {name}")
+            stdscr.addstr(3, 2, f"Saved to: {dest_path}")
+            try:
+                downloaded = os.path.getsize(dest_path)
+            except Exception:
+                downloaded = 0
+            stdscr.addstr(4, 2, f"Total: {sizeof_fmt(downloaded)}")
+            try:
+                avg = sizeof_fmt(int(downloaded/elapsed)) if elapsed > 0 else '0B'
+            except Exception:
+                avg = '0B'
+            stdscr.addstr(5, 2, f"Time: {int(elapsed)}s  Avg speed: {avg}/s")
+        else:
+            stdscr.addstr(0, 2, f"{ICON_ERR} wget download failed", ERR_ATTR if ERR_ATTR is not None else curses.A_BOLD)
+            stdscr.addstr(2, 2, f"Name: {name}")
+            stdscr.addstr(3, 2, f"URL: {url}")
+            stdscr.addstr(4, 2, "See wget output above or check network.")
+
+        stdscr.addstr(h - 2, 2, "Press any key to continue...")
+        stdscr.refresh()
+        stdscr.getch()
+    except Exception:
+        pass
+
+
+# helper wrapper to ask user if they want to use wget
+def perform_download(selected, dest_path, stdscr, h, w):
+    try:
+        try:
+            stdscr.addstr(h - 2, 2, "Use wget for this download? (y/N): ")
+            stdscr.clrtoeol()
+            stdscr.refresh()
+            set_input_blocking(stdscr, True)
+            ch = stdscr.getkey()
+        except Exception:
+            ch = ''
+        finally:
+            set_input_blocking(stdscr, False)
+        if ch.lower() == 'y':
+            download_with_wget(selected, dest_path, stdscr, h, w)
+        else:
+            download_with_progress(selected, dest_path, stdscr, h, w)
+    except Exception:
+        # fallback
+        download_with_progress(selected, dest_path, stdscr, h, w)
+
+
 # ------------------------------
 # Curses UI
 # ------------------------------
 def curses_main(stdscr, systems, cache):
     curses.curs_set(0)
-    stdscr.nodelay(False)
+    # run main loop with a short timeout so scrolling updates occur even when idle
+    stdscr.timeout(DEFAULT_TIMEOUT_MS)
     stdscr.keypad(True)
 
     # initialize colors and icon styles
@@ -414,6 +703,9 @@ def curses_main(stdscr, systems, cache):
     # search state
     search_query = None  # lowercase query or None
 
+    # keep track of the last selected item's scroll key so we can reset it
+    prev_selected_key = None
+
     while True:
         stdscr.clear()
         h, w = stdscr.getmaxyx()
@@ -430,9 +722,9 @@ def curses_main(stdscr, systems, cache):
         # Instructions (include grouping keys)
         instr_text = "↑↓ scroll | ←→ system | ENTER open/download | r toggle regions | TAB switch region | f search | i info | q quit"
         try:
-            stdscr.addstr(1, 2, instr_text, INSTR_ATTR if INSTR_ATTR is not None else curses.A_NORMAL)
+            addstr_scroll(stdscr, 1, 2, instr_text, INSTR_ATTR if INSTR_ATTR is not None else curses.A_NORMAL)
         except Exception:
-            stdscr.addstr(1, 2, instr_text)
+            addstr_scroll(stdscr, 1, 2, instr_text)
 
         # show system id + one download folder in header (if present)
         sys_id = get_system_id(current_sys, systems)
@@ -477,6 +769,22 @@ def curses_main(stdscr, systems, cache):
         else:
             start = region_game_idx
 
+        # compute the currently selected item's stable key (used for scrolling state)
+        cur_sel_idx = (game_idx if not grouped else region_game_idx)
+        cur_sel_key = None
+        if 0 <= cur_sel_idx < len(display_list):
+            cur_item = display_list[cur_sel_idx]
+            # use a stable unique key: (system name, item url)
+            cur_sel_key = (current_sys, cur_item.get('url'))
+        # if selection changed, reset previous scroll state so it restarts when reselected
+        if cur_sel_key != prev_selected_key:
+            try:
+                if prev_selected_key in SCROLL_STATES:
+                    SCROLL_STATES.pop(prev_selected_key, None)
+            except Exception:
+                pass
+            prev_selected_key = cur_sel_key
+
         visible = display_list[start:start + (h - list_start_row - 1)]
 
         # render list (with selection highlight)
@@ -486,14 +794,20 @@ def curses_main(stdscr, systems, cache):
             row = list_start_row + i
             is_sel = (i == sel_vis)
             prefix = f"{ICON_ARROW} " if is_sel else "   "
-            name = game.get("name", "")[:max(10, w - 20)]
+            name = game.get("name", "")
             size = game.get("size", "?")
             try:
                 if is_sel:
-                    stdscr.addstr(row, 2, prefix + name, SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
+                    stdscr.addstr(row, 2, prefix, SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
+                    # pass a stable per-item key so scrolling state ties to the item, not to screen row
+                    item_key = (current_sys, game.get('url'))
+                    addstr_scroll(stdscr, row, 5, name, SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL, key=item_key, max_width=w-20)
                     stdscr.addstr(row, w - 12, size.rjust(10), SIZE_ATTR if SIZE_ATTR is not None else curses.A_NORMAL)
                 else:
-                    stdscr.addstr(row, 2, prefix + name, NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
+                    # non-selected lines show truncated name; keep their scroll state tied to item as well
+                    item_key = (current_sys, game.get('url'))
+                    truncated = name[:max(10, w - 20)]
+                    stdscr.addstr(row, 2, prefix + truncated, NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
                     stdscr.addstr(row, w - 12, size.rjust(10), SIZE_ATTR if SIZE_ATTR is not None else curses.A_NORMAL)
             except Exception:
                 try:
@@ -555,7 +869,7 @@ def curses_main(stdscr, systems, cache):
                 ensure_dir(dest_choice)
                 fname = sanitize_filename_from_url_or_name(selected.get('url'), selected.get('name'))
                 dest_path = os.path.join(dest_choice, fname)
-                download_with_progress(selected, dest_path, stdscr, h, w)
+                perform_download(selected, dest_path, stdscr, h, w)
                 # continue main loop
                 continue
 
@@ -578,6 +892,7 @@ def curses_main(stdscr, systems, cache):
             # prompt
             curses.echo()
             curses.curs_set(1)
+            set_input_blocking(stdscr, True)
             stdscr.addstr(h - 2, 2, "Search (empty to clear): " + " " * (w - 24))
             stdscr.move(h - 2, 24)
             stdscr.refresh()
@@ -586,6 +901,7 @@ def curses_main(stdscr, systems, cache):
                 query = raw.decode("utf-8").strip()
             except Exception:
                 query = ""
+            set_input_blocking(stdscr, False)
             curses.noecho()
             curses.curs_set(0)
 
@@ -709,12 +1025,16 @@ def curses_main(stdscr, systems, cache):
                     stdscr.clear()
                     try:
                         stdscr.addstr(0, 2, "Confirm download", HEADER_ATTR if HEADER_ATTR is not None else curses.A_BOLD)
-                        stdscr.addstr(1, 2, f"Name: {selected.get('name')}", SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
+                        stdscr.addstr (1, 2, "Name: ", SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
+                        addstr_scroll(stdscr, 1, 8, f"{selected.get('name')}", SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
                         stdscr.addstr(2, 2, f"Size: {size_str}", INFO_ATTR if INFO_ATTR is not None else curses.A_NORMAL)
-                        stdscr.addstr(3, 2, f"URL: {selected.get('url')}", NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
+                        stdscr.addstr(3, 2, "URL: ", NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
+                        addstr_scroll(stdscr, 3, 8, f"{selected.get('url')}", NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
                         stdscr.addstr(5, 2, "Destination:", INFO_ATTR if INFO_ATTR is not None else curses.A_NORMAL)
                     except Exception:
                         stdscr.addstr(0, 2, "Confirm download")
+
+                    stdscr.refresh()
 
                     line = 6
                     if sys_folders:
@@ -757,6 +1077,7 @@ def curses_main(stdscr, systems, cache):
                         # prompt for custom path
                         curses.echo()
                         curses.curs_set(1)
+                        set_input_blocking(stdscr, True)
                         try:
                             stdscr.addstr(line + 1, 2, "Enter folder path: ", INSTR_ATTR if INSTR_ATTR is not None else curses.A_NORMAL)
                         except Exception:
@@ -768,6 +1089,7 @@ def curses_main(stdscr, systems, cache):
                             pathinp = rawp.decode("utf-8").strip()
                         except Exception:
                             pathinp = ''
+                        set_input_blocking(stdscr, False)
                         curses.noecho()
                         curses.curs_set(0)
                         dest_choice = pathinp if pathinp else default
@@ -779,11 +1101,25 @@ def curses_main(stdscr, systems, cache):
                     ensure_dir(dest_choice)
                     fname = sanitize_filename_from_url_or_name(selected.get('url'), selected.get('name'))
                     dest_path = os.path.join(dest_choice, fname)
-                    download_with_progress(selected, dest_path, stdscr, h, w)
+                    perform_download(selected, dest_path, stdscr, h, w)
                 # continue main loop
                 continue
 
         stdscr.refresh()
+
+def set_input_blocking(stdscr, blocking=True):
+    """
+    When blocking=True -> set getch/getstr to block (timeout = -1).
+    When blocking=False -> set to DEFAULT_TIMEOUT_MS so UI keeps updating.
+    """
+    try:
+        if blocking:
+            stdscr.timeout(-1)
+        else:
+            stdscr.timeout(DEFAULT_TIMEOUT_MS)
+    except Exception:
+        pass
+
 
 # ------------------------------
 # Main entry
