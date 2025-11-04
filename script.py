@@ -922,30 +922,34 @@ def curses_main(stdscr, systems, cache):
                     stdscr.addstr(h - 2, 2, f"Download to system folder [{sys_folders[0]}] (1), default [{default}] (2), other (3): ")
                     stdscr.clrtoeol()
                     stdscr.refresh()
+                    # make this input blocking so the prompt waits for the user
+                    set_input_blocking(stdscr, True)
                     try:
                         ch = stdscr.getkey()
                     except Exception:
                         ch = ''
+                    finally:
+                        set_input_blocking(stdscr, False)
                     curses.noecho()
                     curses.curs_set(0)
-                    if ch == '1':
-                        dest_choice = sys_folders[0]
-                    elif ch == '2':
-                        dest_choice = default
-                    elif ch == '3':
-                        curses.echo()
-                        curses.curs_set(1)
-                        stdscr.addstr(h - 2, 2, "Enter folder path: " + " " * (w - 18))
-                        stdscr.move(h - 2, 19)
-                        stdscr.refresh()
-                        try:
-                            rawp = stdscr.getstr(h - 2, 19, w - 20)
-                            pathinp = rawp.decode("utf-8").strip()
-                        except Exception:
-                            pathinp = ''
-                        curses.noecho()
-                        curses.curs_set(0)
-                        dest_choice = pathinp if pathinp else default
+                if ch == '1' and sys_folders:
+                    dest_choice = sys_folders[0]
+                elif ch == '2':
+                    dest_choice = default
+                elif ch == '3':
+                    curses.echo()
+                    curses.curs_set(1)
+                    stdscr.addstr(h - 2, 2, "Enter folder path: " + " " * (w - 18))
+                    stdscr.move(h - 2, 19)
+                    stdscr.refresh()
+                    try:
+                        rawp = stdscr.getstr(h - 2, 19, w - 20)
+                        pathinp = rawp.decode("utf-8").strip()
+                    except Exception:
+                        pathinp = ''
+                    curses.noecho()
+                    curses.curs_set(0)
+                    dest_choice = pathinp if pathinp else default
                 else:
                     dest_choice = default
                 if not dest_choice:
@@ -1044,7 +1048,12 @@ def curses_main(stdscr, systems, cache):
                 stdscr.addstr(4 + i, 4, fldr)
             stdscr.addstr(6 + len(folders), 2, "Press any key to continue...")
             stdscr.refresh()
-            stdscr.getch()
+            # wait for the user (make blocking while waiting)
+            set_input_blocking(stdscr, True)
+            try:
+                stdscr.getch()
+            finally:
+                set_input_blocking(stdscr, False)
             curses.noecho()
             curses.curs_set(0)
         elif key == ord('g'):  # set global download folders (comma-separated)
@@ -1058,11 +1067,15 @@ def curses_main(stdscr, systems, cache):
             stdscr.addstr(h - 2, 2, "Set GLOBAL download folders (comma separated, empty to clear):" + " " * 10)
             stdscr.move(h - 2, 60)
             stdscr.refresh()
+            # make getstr blocking so user can type
+            set_input_blocking(stdscr, True)
             try:
                 raw = stdscr.getstr(h - 2, 60, w - 62)
                 inp = raw.decode("utf-8").strip()
             except Exception:
                 inp = ""
+            finally:
+                set_input_blocking(stdscr, False)
             curses.noecho()
             curses.curs_set(0)
             if inp == "":
@@ -1081,11 +1094,15 @@ def curses_main(stdscr, systems, cache):
             stdscr.addstr(h - 2, 2, f"Set download folders for '{current_sys}' (comma separated, empty to clear):" + " " * 10)
             stdscr.move(h - 2, 70)
             stdscr.refresh()
+            # make getstr blocking so user can type
+            set_input_blocking(stdscr, True)
             try:
                 raw = stdscr.getstr(h - 2, 70, w - 72)
                 inp = raw.decode("utf-8").strip()
             except Exception:
                 inp = ""
+            finally:
+                set_input_blocking(stdscr, False)
             curses.noecho()
             curses.curs_set(0)
             if inp == "":
@@ -1180,7 +1197,14 @@ def curses_main(stdscr, systems, cache):
                     stdscr.refresh()
 
                     try:
-                        ch = stdscr.getkey()
+                        # confirmation input should block so user can respond
+                        set_input_blocking(stdscr, True)
+                        try:
+                            ch = stdscr.getkey()
+                        except Exception:
+                            ch = ''
+                        finally:
+                            set_input_blocking(stdscr, False)
                     except Exception:
                         ch = ''
 
