@@ -63,22 +63,74 @@ CONFIG_FILE = "config.json"
 # ------------------------------
 def load_config():
     # create a sample config (with download folders + ids) if missing
+    # updated for the new configuration version
     if not os.path.exists(CONFIG_FILE):
         sample = {
             "download_folders": ["/home/you/roms"],   # global default folders (can be list or single path)
-            "Nintendo Gameboy": {
-                "id": "gb",
-                "base_url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/",
+            "Nintendo Gameboy": {           # fullname for the system
+                "id": "gb",                 # system ID
+                "urls": ["https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/"],   # URLs for scraping 
                 "entries": "tbody tr",
-                "fields": {
-                    "name": "td.link a",
-                    "url": "td.link a",
-                    "size": "td.size"
+                "fields": {                 # sample field selectors
+                    "name": "td.link a",    # game name
+                    "url": "td.link a",     # download URL
+                    "size": "td.size"       # file size
                 },
-                "download_folders": ["/home/you/roms/gameboy"],
-                "ignore": {
-                    "size": "-",
-                    "name_contains": "Parent"
+                "download_folders": "./roms/gameboy",
+                "ignore": {                     # sample ignore rules : skip links with these substrings
+                    "size": "-",                # skip when size is "-" (folders and upper directories in Myrient)
+                    "name_contains": "Parent"   # skip when name contains "Parent"
+                },
+                "regions": {     # sample region rules : search these substrings in game names
+                    "USA": [
+                        "(USA)",
+                        "(U)",
+                        "US"
+                    ],
+                    "Europe": [
+                        "(Europe)",
+                        "(E)",
+                        "EU"
+                    ],
+                    "Japan": [
+                        "(Japan)",
+                        "(J)",
+                        "JP"
+                    ],
+                    "World": [
+                        "(World)",
+                        "(W)"
+                    ]
+                },
+                "types": {      # sample type rules : search these substrings in game names
+                    "Demo": [
+                        "(Demo)",
+                        "Demo"
+                    ],
+                    "Beta": [
+                        "(Beta)",
+                        "Beta"
+                    ],
+                    "Hack": [
+                        "(Hack)",
+                        "Hack"
+                    ],
+                    "Translation": [
+                        "(Translation)",
+                        "Translation"
+                    ],
+                    "Unlicensed": [
+                        "(Unl)",
+                        "Unlicensed"
+                    ],
+                    "Homebrew": [
+                        "(Homebrew)",
+                        "Homebrew"
+                    ],
+                    "Aftermarket": [
+                        "(Aftermarket)",
+                        "Aftermarket"
+                    ]
                 }
             }
         }
