@@ -803,9 +803,15 @@ def perform_download(selected, dest_path, stdscr, h, w):
 # ------------------------------
 def curses_main(stdscr, systems, cache):
     curses.curs_set(0)
-    # run main loop with a short timeout so scrolling updates occur even when idle
     stdscr.timeout(DEFAULT_TIMEOUT_MS)
     stdscr.keypad(True)
+
+    # reduce flicker:
+    try:
+        stdscr.leaveok(True)   # don't move the cursor during refresh
+        stdscr.scrollok(False) # avoid scrolling side effects
+    except Exception:
+        pass
 
     # initialize colors and icon styles
     init_ui_colors(stdscr)
@@ -831,7 +837,8 @@ def curses_main(stdscr, systems, cache):
     prev_selected_key = None
 
     while True:
-        stdscr.clear()
+        # use erase() (faster) and batch-refresh at the end
+        stdscr.erase()
         h, w = stdscr.getmaxyx()
 
         current_sys = system_names[system_idx]
@@ -1224,10 +1231,10 @@ def curses_main(stdscr, systems, cache):
                     try:
                         stdscr.addstr(0, 2, "Confirm download", HEADER_ATTR if HEADER_ATTR is not None else curses.A_BOLD)
                         stdscr.addstr (1, 2, "Name: ", SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
-                        addstr_scroll(stdscr, 1, 8, f"{selected.get('name')}", SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL)
+                        addstr_scroll(stdscr, 1, 8, f"{selected.get('name')}", SELECTED_ATTR if SELECTED_ATTR is not None else curses.A_NORMAL, max_width=w-20)
                         stdscr.addstr(2, 2, f"Size: {size_str}", INFO_ATTR if INFO_ATTR is not None else curses.A_NORMAL)
                         stdscr.addstr(3, 2, "URL: ", NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
-                        addstr_scroll(stdscr, 3, 8, f"{selected.get('url')}", NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL)
+                        addstr_scroll(stdscr, 3, 8, f"{selected.get('url')}", NORMAL_ATTR if NORMAL_ATTR is not None else curses.A_NORMAL, max_width=w-20)
                         stdscr.addstr(5, 2, "Destination:", INFO_ATTR if INFO_ATTR is not None else curses.A_NORMAL)
                     except Exception:
                         stdscr.addstr(0, 2, "Confirm download")
