@@ -98,7 +98,7 @@ An example entry:
 {
   "Nintendo Gameboy": {
     "id": "gb",
-    "base_url": "https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/",
+    "urls": ["https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/"],
     "entries": "tbody tr",
     "fields": {
       "name": "td.link a",
@@ -114,6 +114,15 @@ An example entry:
       "USA": ["(USA)", "(U)"],
       "Europe": ["(Europe)", "(E)"],
       "Japan": ["(Japan)", "(J)"]
+    },
+    "types": {
+      "Demo": ["(Demo)", "Demo"],
+      "Beta": ["(Beta)", "Beta"],
+      "Hack": ["(Hack)", "Hack"],
+      "Translation": ["(Translation)", "Translation"],
+      "Unlicensed": ["(Unl)", "Unlicensed"],
+      "Homebrew": ["(Homebrew)", "Homebrew"],
+      "Aftermarket": ["(Aftermarket)", "Aftermarket"]
     }
   }
 }

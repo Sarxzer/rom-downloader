@@ -344,5 +344,73 @@
         "Aftermarket"
       ]
     }
+  },
+  "Playstation 2": {
+    "id": "ps2",
+    "urls": [
+      "https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation%202/"
+    ],
+    "entries": "tbody tr",
+    "fields": {
+      "name": "td.link a",
+      "url": "td.link a",
+      "size": "td.size"
+    },
+    "download_folders": "./roms/ps2/",
+    "ignore": {
+      "size": "-",
+      "name_contains": "Parent"
+    },
+    "regions": {
+      "USA": [
+        "(USA)",
+        "(U)",
+        "US"
+      ],
+      "Europe": [
+        "(Europe)",
+        "(E)",
+        "EU"
+      ],
+      "Japan": [
+        "(Japan)",
+        "(J)",
+        "JP"
+      ],
+      "World": [
+        "(World)",
+        "(W)"
+      ]
+    },
+    "types": {
+      "Demo": [
+        "(Demo)",
+        "Demo"
+      ],
+      "Beta": [
+        "(Beta)",
+        "Beta"
+      ],
+      "Hack": [
+        "(Hack)",
+        "Hack"
+      ],
+      "Translation": [
+        "(Translation)",
+        "Translation"
+      ],
+      "Unlicensed": [
+        "(Unl)",
+        "Unlicensed"
+      ],
+      "Homebrew": [
+        "(Homebrew)",
+        "Homebrew"
+      ],
+      "Aftermarket": [
+        "(Aftermarket)",
+        "Aftermarket"
+      ]
+    }
   }
 }
