@@ -19,7 +19,7 @@ It allows you to browse, search, and download game ROMs directly from websites (
 2. Extract the files anywhere you like.
 3. Run the script for the first time to generate a `config.json`:
    ```bash
-   python3 script.py
+   python3 rom.py
    ```
 
 4. Edit the generated config file to set up your preferred systems and URLs.
@@ -55,7 +55,7 @@ The script automatically installs missing dependencies on first run.
 ## 🎛️ Usage
 
 ```bash
-python3 script.py
+python3 rom.py
 ```
 
 ### 🕷️ Scraping
@@ -71,7 +71,8 @@ This process may take a few moments depending on the number of systems and games
 | ← / →     | Switch between systems          |
 | **ENTER** | Download selected ROM           |
 | **r**     | Toggle region grouping          |
-| **TAB**   | Cycle through regions           |
+| **t**     | Toggle type filtering           |
+| **TAB**   | Cycle through regions/types     |
 | **f**     | Search games                    |
 | **i**     | System info                     |
 | **d**     | Set per-system download folders |
