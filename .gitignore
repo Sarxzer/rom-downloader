@@ -11,3 +11,8 @@ rom_cache.json
 # Any .zip or .7z files
 *.zip
 *.7z
+
+# Releases
+releases/
+release.py
+release.json
