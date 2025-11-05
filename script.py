@@ -57,6 +57,7 @@ import shutil
 
 CACHE_FILE = "rom_cache.json"
 CONFIG_FILE = "config.json"
+CONFIG_VERSION = 1
 
 # ------------------------------
 # Load configuration
@@ -66,6 +67,7 @@ def load_config():
     # updated for the new configuration version
     if not os.path.exists(CONFIG_FILE):
         sample = {
+            "version" : CONFIG_VERSION,
             "download_folders": ["/home/you/roms"],   # global default folders (can be list or single path)
             "Nintendo Gameboy": {           # fullname for the system
                 "id": "gb",                 # system ID
@@ -139,7 +141,11 @@ def load_config():
         print("Created sample config.json — edit it before running again!")
         exit()
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+        if config.get("version") != CONFIG_VERSION:
+            print(f"Config version mismatch: {config.get('version')} != {CONFIG_VERSION}")
+            exit()
+        return config
 
 # ------------------------------
 # Load or scrape games
