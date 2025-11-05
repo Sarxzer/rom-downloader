@@ -56,7 +56,7 @@ import shutil
 
 CACHE_FILE = "rom_cache.json"
 CONFIG_FILE = "config.json"
-CONFIG_VERSION = 1
+CONFIG_VERSION = 3
 
 # ------------------------------
 # Load configuration
@@ -66,84 +66,87 @@ def load_config():
     # updated for the new configuration version
     if not os.path.exists(CONFIG_FILE):
         sample = {
-            "version" : CONFIG_VERSION,
-            "download_folders": ["/home/you/roms"],   # global default folders (can be list or single path)
-            "Nintendo Gameboy": {           # fullname for the system
-                "id": "gb",                 # system ID
-                "urls": ["https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/"],   # URLs for scraping 
-                "entries": "tbody tr",
-                "fields": {                 # sample field selectors
+            "_meta": {
+                "version" : CONFIG_VERSION
+            },
+            "systems": {
+                "Nintendo Gameboy": {           # fullname for the system
+                    "id": "gb",                 # system ID
+                    "urls": ["https://myrient.erista.me/files/No-Intro/Nintendo%20-%20Game%20Boy/"],   # URLs for scraping
+                    "entries": "tbody tr",
+                    "fields": {                 # sample field selectors
                     "name": "td.link a",    # game name
                     "url": "td.link a",     # download URL
                     "size": "td.size"       # file size
-                },
-                "download_folders": "./roms/gameboy",
-                "ignore": {                     # sample ignore rules : skip links with these substrings
-                    "size": "-",                # skip when size is "-" (folders and upper directories in Myrient)
-                    "name_contains": "Parent"   # skip when name contains "Parent"
-                },
-                "regions": {     # sample region rules : search these substrings in game names
-                    "USA": [
-                        "(USA)",
-                        "(U)",
-                        "US"
-                    ],
-                    "Europe": [
-                        "(Europe)",
-                        "(E)",
-                        "EU"
-                    ],
-                    "Japan": [
-                        "(Japan)",
-                        "(J)",
-                        "JP"
-                    ],
-                    "World": [
-                        "(World)",
-                        "(W)"
-                    ]
-                },
-                "types": {      # sample type rules : search these substrings in game names
-                    "Demo": [
-                        "(Demo)",
-                        "Demo"
-                    ],
-                    "Beta": [
-                        "(Beta)",
-                        "Beta"
-                    ],
-                    "Hack": [
-                        "(Hack)",
-                        "Hack"
-                    ],
-                    "Translation": [
-                        "(Translation)",
-                        "Translation"
-                    ],
-                    "Unlicensed": [
-                        "(Unl)",
-                        "Unlicensed"
-                    ],
-                    "Homebrew": [
-                        "(Homebrew)",
-                        "Homebrew"
-                    ],
-                    "Aftermarket": [
-                        "(Aftermarket)",
-                        "Aftermarket"
-                    ]
+                    },
+                    "download_folders": "./roms/gameboy",
+                    "ignore": {                     # sample ignore rules : skip links with these substrings
+                        "size": "-",                # skip when size is "-" (folders and upper directories in Myrient)
+                        "name_contains": "Parent"   # skip when name contains "Parent"
+                    },
+                    "regions": {     # sample region rules : search these substrings in game names
+                        "USA": [
+                            "(USA)",
+                            "(U)",
+                            "US"
+                        ],
+                        "Europe": [
+                            "(Europe)",
+                            "(E)",
+                            "EU"
+                        ],
+                        "Japan": [
+                            "(Japan)",
+                            "(J)",
+                            "JP"
+                        ],
+                        "World": [
+                            "(World)",
+                            "(W)"
+                        ]
+                    },
+                    "types": {      # sample type rules : search these substrings in game names
+                        "Demo": [
+                            "(Demo)",
+                            "Demo"
+                        ],
+                        "Beta": [
+                            "(Beta)",
+                            "Beta"
+                        ],
+                        "Hack": [
+                            "(Hack)",
+                            "Hack"
+                        ],
+                        "Translation": [
+                            "(Translation)",
+                            "Translation"
+                        ],
+                        "Unlicensed": [
+                            "(Unl)",
+                            "Unlicensed"
+                        ],
+                        "Homebrew": [
+                            "(Homebrew)",
+                            "Homebrew"
+                        ],
+                        "Aftermarket": [
+                            "(Aftermarket)",
+                            "Aftermarket"
+                        ]
+                    }
                 }
             }
         }
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(sample, f, indent=2)
-        print("Created sample config.json — edit it before running again!")
-        print("Created sample config.json — edit it before running again!")
-        sys.exit()
+            print("Created sample config.json — edit it before running again!")
+            sys.exit()
+
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         config = json.load(f)
-        if config.get("version") != CONFIG_VERSION:
-            print(f"Config version mismatch: {config.get('version')} != {CONFIG_VERSION}")
+        if config.get("_meta", {}).get("version") != CONFIG_VERSION:
+            print(f"Config version mismatch: {config.get('_meta', {}).get('version')} != {CONFIG_VERSION}")
             sys.exit()
         return config
 # ------------------------------
@@ -318,6 +321,9 @@ def get_system_id(system_name, systems):
         return info.get("id", "")
     return ""
 
+# Cache config directory path at module level
+CONFIG_DIR = os.path.dirname(os.path.abspath(CONFIG_FILE))
+
 def normalize_download_folders(folders):
     """
     Normalize download_folders which can be a string or a list into a list.
@@ -332,7 +338,6 @@ def normalize_download_folders(folders):
     if not isinstance(folders, list):
         return []
 
-    cfg_dir = os.path.dirname(os.path.abspath(CONFIG_FILE))
     out = []
     for f in folders:
         if not isinstance(f, str):
@@ -342,12 +347,11 @@ def normalize_download_folders(folders):
         p = os.path.expanduser(os.path.expandvars(p))
         # if relative, resolve against the config file directory
         if not os.path.isabs(p):
-            p = os.path.normpath(os.path.join(cfg_dir, p))
+            p = os.path.normpath(os.path.join(CONFIG_DIR, p))
         else:
             p = os.path.normpath(p)
         out.append(p)
     return out
-
 
 # helper to produce a pretty filename from url or name
 def sanitize_filename_from_url_or_name(url, name=None):
@@ -1329,42 +1333,69 @@ def set_input_blocking(stdscr, blocking=True):
 # ------------------------------
 def main():
     config = load_config()
-    cache = load_cache()
+    config_meta = config.get("_meta") or {}
 
-    # compute config hash and compare with cached hash to detect config changes
+    cache = load_cache()
     current_cfg_hash = compute_config_hash(config)
     cached_meta = cache.get("_meta") or {}
     cached_cfg_hash = cached_meta.get("config_hash")
 
-    # Normalize any old cached categorized dicts into flat lists
+    # Normalize legacy cached entries:
+    # - Ensure _meta stays a dict (warn & reset if corrupted)
+    # - If a system cache value is a dict of lists (old categorized form),
+    #   flatten it into a single list of entries.
     for k, v in list(cache.items()):
         if k == "_meta":
+            if not isinstance(v, dict):
+                print(f"Warning: cached _meta has unexpected type {type(v)}; resetting _meta.")
+                cache["_meta"] = {}
             continue
+
+        # Flatten system entries saved as {bucket_name: [items]} -> [items]
         if isinstance(v, dict):
-            flat = []
-            for sub in v.values():
-                if isinstance(sub, list):
-                    flat.extend(sub)
-            cache[k] = flat
+            if any(isinstance(sub, list) for sub in v.values()):
+                flat = []
+                for sub in v.values():
+                    if isinstance(sub, list):
+                        flat.extend(sub)
+                cache[k] = flat
+
+    def get_system_urls(info):
+        """
+        Helper to extract a list of URLs from a system info dict.
+        Supports 'urls' (list) or legacy 'base_url' (string).
+        """
+        if not isinstance(info, dict):
+            return []
+        urls = info.get("urls")
+        if isinstance(urls, list) and urls:
+            return urls
+        base_url = info.get("base_url")
+        if isinstance(base_url, str) and base_url:
+            return [base_url]
+        return []
 
     if current_cfg_hash != cached_cfg_hash:
         # config changed -> re-scrape all systems to refresh index
         temp_cache = {}
-        for sys_name, info in config.items():
-            try:
-                for url in info.get("urls", []):
-                    temp_cache[sys_name] = temp_cache.get(sys_name, []) + scrape_games(url, info)
-            except Exception:
-                pass
+        # only iterate real system entries (skip top-level metadata like version/download_folders)
+        for sys_name, info in get_system_entries(config.get("systems", {})).items():
+            urls = get_system_urls(info)
+            temp_cache[sys_name] = []
+            for url in urls:
+                try:
+                    temp_cache[sys_name].extend(scrape_games(url, info))
+                except Exception:
+                    pass
         cache = temp_cache
         # update meta and save
         cache["_meta"] = {"config_hash": current_cfg_hash, "updated": int(time.time())}
         save_cache(cache)
     else:
         # config unchanged -> only scrape missing/empty systems (faster)
-        for sys_name, info in config.items():
-            if sys_name not in cache or not cache.get(sys_name):
-                urls = info.get("urls") or ([info.get("base_url")] if info.get("base_url") else [])
+        for sys_name, info in config.get("systems", {}).items():
+            if not cache.get(sys_name):
+                urls = get_system_urls(info)
                 combined = []
                 for url in urls:
                     try:
@@ -1373,9 +1404,10 @@ def main():
                         # ignore individual URL failures
                         pass
                 cache[sys_name] = combined
+        # save once
         save_cache(cache)
 
-    curses.wrapper(curses_main, config, cache)
+    curses.wrapper(curses_main, config.get("systems"), cache)
 
 
 if __name__ == "__main__":
