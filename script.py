@@ -54,6 +54,30 @@ from bs4 import BeautifulSoup
 import time
 import shutil
 
+# helper functions for downloading
+def ensure_dir(path):
+    """
+    Ensure the given directory path exists (create if missing).
+    """
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+
+
+def sizeof_fmt(num, suffix='B'):
+    """
+    Format a file size (in bytes) into a human-readable string.
+    """
+    if num is None:
+        return 'Unknown'
+    num = float(num)
+    for unit in ['','K','M','G','T','P']:
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}P{suffix}"
+
 CACHE_FILE = "rom_cache.json"
 CONFIG_FILE = "config.json"
 CONFIG_VERSION = 3
@@ -153,17 +177,28 @@ def load_config():
 # Load or scrape games
 # ------------------------------
 def load_cache():
+    """
+    Load the cache from CACHE_FILE if it exists.
+    """
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
 
 def save_cache(cache):
+    """
+    Save the cache dict back to CACHE_FILE.
+    """
+    ensure_dir(os.path.dirname(CACHE_FILE))
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(cache, f, indent=2)
 
 # save the config (called when UI edits folders)
 def save_config(cfg):
+    """
+    Save the config dict back to CONFIG_FILE.
+    """
+    ensure_dir(os.path.dirname(CONFIG_FILE))
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
@@ -186,6 +221,9 @@ def compute_config_hash(cfg):
 
 
 def categorize_by_region(games, region_config):
+    """
+    Categorize games by their region using the provided region_config.
+    """
     # If no region rules provided, place all games into "Unknown"
     if not region_config:
         return {"Unknown": list(games)}
@@ -215,7 +253,9 @@ def categorize_by_region(games, region_config):
     return categorized
 
 def categorize_by_type(games, type_config):
-    # If no type rules provided, put all games into "None"
+    """
+    Categorize games by their type using the provided type_config.
+    """
     if not type_config:
         return {"None": list(games)}
 
@@ -243,6 +283,9 @@ def categorize_by_type(games, type_config):
 
 
 def scrape_games(base_url, config):
+    """
+    Scrape games from the given base_url using the provided config dict.
+    """
     print(f"Scraping games from {base_url} ...")
     try:
         resp = urllib.request.urlopen(base_url)
@@ -355,7 +398,9 @@ def normalize_download_folders(folders):
 
 # helper to produce a pretty filename from url or name
 def sanitize_filename_from_url_or_name(url, name=None):
-    # try to extract basename from url (unquote percent-encoding)
+    """
+    Sanitize a filename by removing unwanted characters and ensuring a valid format.
+    """
     try:
         path = urllib.parse.unquote(url.split('?')[0])
         base = os.path.basename(path)
@@ -398,24 +443,6 @@ def get_download_folders_for_system(system_name, systems):
     if systems.get("download_folder"):
         return normalize_download_folders(systems.get("download_folder"))
     return []
-
-# helper functions for downloading
-def ensure_dir(path):
-    try:
-        os.makedirs(path, exist_ok=True)
-    except Exception:
-        pass
-
-
-def sizeof_fmt(num, suffix='B'):
-    if num is None:
-        return 'Unknown'
-    num = float(num)
-    for unit in ['','K','M','G','T','P']:
-        if abs(num) < 1024.0:
-            return f"{num:3.1f}{unit}{suffix}"
-        num /= 1024.0
-    return f"{num:.1f}P{suffix}"
 
 
 # UI globals (initialized when curses session starts)
